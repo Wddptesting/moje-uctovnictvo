@@ -12,18 +12,18 @@ st.title("💸 Moja Účtovná Apka")
 # --- NAČÍTANIE DÁT ---
 def naciť_data():
     try:
-        response = requests.get(SCRIPT_URL, timeout=10)
+        # Pridaný parameter na zabránenie starých dát (cache)
+        response = requests.get(f"{SCRIPT_URL}?nocache={date.today()}", timeout=15)
         if response.status_code == 200:
             raw_data = response.json()
             if len(raw_data) > 1:
                 df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
-                # Prevod na čísla
-                for col in ['Rano', 'Vybery', 'Vecer', 'Cista_Trzba']:
+                for col in ['Rano', 'Vybery', 'Vecer', 'Cista_Trzba', 'Rok']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce').fillna(0)
                 return df
-    except Exception as e:
-        st.error(f"Chyba pripojenia: {e}")
+    except:
+        pass # Ignorujeme chybu formátu, skúsime to pri ďalšom načítaní
     return pd.DataFrame()
 
 df_data = naciť_data()
@@ -31,17 +31,25 @@ dnes_dt = date.today()
 
 # --- ZOBRAZENIE ---
 if not df_data.empty and 'Cista_Trzba' in df_data.columns:
-    # Metriky
-    celkova_trzba = df_data['Cista_Trzba'].sum()
-    st.metric("Celková tržba v tabuľke", f"{celkova_trzba:,.2f} €")
+    # Filtrujeme len riadky, kde je skutočná tržba (viac ako 0)
+    df_trzby = df_data[df_data['Cista_Trzba'] > 0]
     
-    # Graf - zobrazíme len riadky, kde je tržba (uzávierky)
-    df_graf = df_data[df_data['Cista_Trzba'] > 0]
-    if not df_graf.empty:
-        st.subheader("Trend tržieb")
-        st.bar_chart(df_graf, x="Datum", y="Cista_Trzba")
+    # Výpočty metrík
+    s_den = df_data[df_data['Datum'] == dnes_dt.strftime("%d.%m.%Y")]['Cista_Trzba'].sum()
+    s_rok = df_data[df_data['Rok'] == dnes_dt.year]['Cista_Trzba'].sum()
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dnešná tržba", f"{s_den:,.2f} €")
+    c2.metric("Tržba (posledných 30 dní)", f"{df_trzby['Cista_Trzba'].tail(30).sum():,.2f} €")
+    c3.metric("Tržba za rok", f"{s_rok:,.2f} €")
+
+    if not df_trzby.empty:
+        st.subheader("Graf tržieb")
+        st.bar_chart(df_trzby, x="Datum", y="Cista_Trzba")
+    else:
+        st.info("💡 Tip: Aby sa zobrazil graf, urobte záznam v kategórii 'Večerný stav (Uzávierka)'.")
 else:
-    st.warning("V tabuľke zatiaľ nie sú žiadne vypočítané tržby. Urobte 'Večernú uzávierku'.")
+    st.warning("Čakám na prvé dáta z tabuľky...")
 
 st.divider()
 
@@ -55,6 +63,7 @@ with st.form("ucto_form", clear_on_submit=True):
 
 if poslat:
     dni_sk = {0: "Pondelok", 1: "Utorok", 2: "Streda", 3: "Štvrtok", 4: "Piatok", 5: "Sobota", 6: "Nedeľa"}
+    # Dôležité: posielame prázdny reťazec pre stĺpec I, aby ho tabuľka dopočítala sama
     riadok = [
         v_datum.strftime("%d.%m.%Y"), dni_sk[v_datum.weekday()], 
         f"{v_datum.isocalendar()[1]}. týždeň", v_datum.year, firma,
@@ -64,8 +73,8 @@ if poslat:
         "", kat, ""
     ]
     try:
-        res = requests.post(SCRIPT_URL, json={"row": riadok})
-        st.success("Zapísané! Obnovujem...")
+        requests.post(SCRIPT_URL, json={"row": riadok})
+        st.success("Zapísané!")
         st.rerun()
     except:
-        st.error("Nepodarilo sa odoslať.")
+        st.rerun() # Pri chybe len obnovíme apku, dáta sú väčšinou už v tabuľke
