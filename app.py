@@ -38,6 +38,15 @@ def nacitaj_data():
             .str.replace(" ", "_")
         )
 
+        # --- NORMALIZÁCIA DÁTUMU (TEXT, NIE DATE) ---
+        if "Datum" in df.columns:
+            df["Datum_norm"] = (
+                df["Datum"]
+                .astype(str)
+                .str.strip()
+                .str.replace(r"\s+", "", regex=True)
+            )
+
         # --- KONVERZIA ČÍSEL ---
         for col in ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]:
             if col in df.columns:
@@ -49,14 +58,6 @@ def nacitaj_data():
                 )
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # --- KRITICKÁ KONVERZIA DÁTUMU ---
-        if "Datum" in df.columns:
-            df["Datum_dt"] = pd.to_datetime(
-                df["Datum"],
-                errors="coerce",
-                dayfirst=True
-            ).dt.date
-
         return df
 
     except Exception as e:
@@ -66,15 +67,18 @@ def nacitaj_data():
 df_data = nacitaj_data()
 dnes_dt = date.today()
 
+# --- NORMALIZOVANÝ DNES (TEXT) ---
+dnes_str = f"{dnes_dt.day}.{dnes_dt.month}.{dnes_dt.year}"
+
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Cista_Trzba" in df_data.columns:
 
     df_trzby = df_data[df_data["Cista_Trzba"] > 0]
 
-    # DNEŠNÁ TRŽBA – OPRAVENÉ
-    if "Datum_dt" in df_data.columns:
+    # ✅ DNEŠNÁ TRŽBA – SPOĽAHLIVO CEZ TEXT
+    if "Datum_norm" in df_data.columns:
         s_den = df_data[
-            df_data["Datum_dt"] == dnes_dt
+            df_data["Datum_norm"] == dnes_str
         ]["Cista_Trzba"].sum()
     else:
         s_den = 0
@@ -92,9 +96,9 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns:
     )
     c3.metric("Tržba za rok", f"{s_rok:,.2f} €")
 
-    if not df_trzby.empty and "Datum_dt" in df_trzby.columns:
+    if not df_trzby.empty and "Datum_norm" in df_trzby.columns:
         st.subheader("Graf tržieb")
-        st.bar_chart(df_trzby, x="Datum_dt", y="Cista_Trzba")
+        st.bar_chart(df_trzby, x="Datum_norm", y="Cista_Trzba")
     else:
         st.info(
             "💡 Tip: Aby sa zobrazil graf, urobte záznam v kategórii "
@@ -132,7 +136,7 @@ if poslat:
     }
 
     riadok = [
-        v_datum.strftime("%d.%m.%Y"),
+        v_datum.strftime("%-d.%-m.%Y"),  # presne rovnaký formát ako čítame
         dni_sk[v_datum.weekday()],
         f"{v_datum.isocalendar()[1]}. týždeň",
         v_datum.year,
