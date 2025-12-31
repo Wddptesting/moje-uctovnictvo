@@ -23,32 +23,39 @@ def nacitaj_data():
 
         raw_data = response.json()
 
-        # Ochrana proti zlému formátu
         if not isinstance(raw_data, list) or len(raw_data) < 2:
             st.error("Neplatná štruktúra dát z Google Sheets")
             return pd.DataFrame()
 
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
 
-        # 🔴 KRITICKÁ OPRAVA – normalizácia názvov stĺpcov
+        # --- NORMALIZÁCIA NÁZVOV STĹPCOV ---
         df.columns = (
             df.columns
-            .str.normalize('NFKD')
-            .str.encode('ascii', errors='ignore')
-            .str.decode('utf-8')
-            .str.replace(' ', '_')
+            .str.normalize("NFKD")
+            .str.encode("ascii", errors="ignore")
+            .str.decode("utf-8")
+            .str.replace(" ", "_")
         )
 
-        # Bezpečná konverzia čísel
-        for col in ['Rano', 'Vybery', 'Vecer', 'Cista_Trzba', 'Rok']:
+        # --- KONVERZIA ČÍSEL ---
+        for col in ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]:
             if col in df.columns:
                 df[col] = (
                     df[col]
                     .astype(str)
-                    .str.replace(',', '.')
-                    .str.replace(' ', '')
+                    .str.replace(",", ".")
+                    .str.replace(" ", "")
                 )
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+        # --- KRITICKÁ KONVERZIA DÁTUMU ---
+        if "Datum" in df.columns:
+            df["Datum_dt"] = pd.to_datetime(
+                df["Datum"],
+                errors="coerce",
+                dayfirst=True
+            ).dt.date
 
         return df
 
@@ -60,22 +67,22 @@ df_data = nacitaj_data()
 dnes_dt = date.today()
 
 # --- ZOBRAZENIE ---
-if not df_data.empty and 'Cista_Trzba' in df_data.columns:
+if not df_data.empty and "Cista_Trzba" in df_data.columns:
 
-    df_trzby = df_data[df_data['Cista_Trzba'] > 0]
+    df_trzby = df_data[df_data["Cista_Trzba"] > 0]
 
-    # Dnešná tržba
-    if 'Datum' in df_data.columns:
+    # DNEŠNÁ TRŽBA – OPRAVENÉ
+    if "Datum_dt" in df_data.columns:
         s_den = df_data[
-            df_data['Datum'] == dnes_dt.strftime("%d.%m.%Y")
-        ]['Cista_Trzba'].sum()
+            df_data["Datum_dt"] == dnes_dt
+        ]["Cista_Trzba"].sum()
     else:
         s_den = 0
 
-    # Tržba za rok
+    # ROČNÁ TRŽBA
     s_rok = df_data[
-        df_data['Rok'] == dnes_dt.year
-    ]['Cista_Trzba'].sum()
+        df_data["Rok"] == dnes_dt.year
+    ]["Cista_Trzba"].sum()
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Dnešná tržba", f"{s_den:,.2f} €")
@@ -85,11 +92,14 @@ if not df_data.empty and 'Cista_Trzba' in df_data.columns:
     )
     c3.metric("Tržba za rok", f"{s_rok:,.2f} €")
 
-    if not df_trzby.empty and 'Datum' in df_trzby.columns:
+    if not df_trzby.empty and "Datum_dt" in df_trzby.columns:
         st.subheader("Graf tržieb")
-        st.bar_chart(df_trzby, x="Datum", y="Cista_Trzba")
+        st.bar_chart(df_trzby, x="Datum_dt", y="Cista_Trzba")
     else:
-        st.info("💡 Tip: Aby sa zobrazil graf, urobte záznam v kategórii 'Večerný stav (Uzávierka)'.")
+        st.info(
+            "💡 Tip: Aby sa zobrazil graf, urobte záznam v kategórii "
+            "'Večerný stav (Uzávierka)'."
+        )
 
 else:
     st.warning("Čakám na prvé dáta z tabuľky...")
@@ -101,7 +111,11 @@ with st.form("ucto_form", clear_on_submit=True):
     v_datum = st.date_input("Dátum", dnes_dt)
     kat = st.radio(
         "Kategória",
-        ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
+        [
+            "Ranný stav pokladne",
+            "Platba dodávateľovi (Výber)",
+            "Večerný stav (Uzávierka)"
+        ],
         horizontal=True
     )
     firma = st.selectbox(
