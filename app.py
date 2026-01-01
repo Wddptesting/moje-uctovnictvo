@@ -41,7 +41,7 @@ def nacitaj_data():
                                .str.strip() \
                                .str.replace(" ", "_")
 
-        # Konverzia dátumu
+        # Konverzia dátumu – veľmi spoľahlivá (najprv ISO, potom slovenský formát)
         if "Datum" in df.columns:
             df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
             mask = df["Datum_date"].isna()
@@ -52,7 +52,7 @@ def nacitaj_data():
                     errors="coerce"
                 )
 
-        # Konverzia čísel
+        # Konverzia čísel (vrátane Cista_Trzba)
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
         for col in num_cols:
             if col in df.columns:
@@ -72,21 +72,21 @@ df_data = nacitaj_data()
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
 
-    # Odstránime len riadky s úplne neplatným dátumom
+    # Odstránime riadky s neplatným dátumom (bezpečné)
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
 
-    # Tržba za vybraný deň – suma Cista_Trzba pre tento dátum (aj keď je len na jednom riadku)
+    # Tržba za vybraný deň – suma Cista_Trzba pre tento presný dátum
     s_day = df_valid[
         df_valid["Datum_date"].dt.date == selected_date
     ]["Cista_Trzba"].sum()
 
-    # Tržba za posledných 30 dní
+    # Tržba za posledných 30 dní od vybraného dátumu
     pred_30 = selected_date - timedelta(days=30)
     s_30_dni = df_valid[
         df_valid["Datum_date"].dt.date >= pred_30
     ]["Cista_Trzba"].sum()
 
-    # Tržba za rok vybraného dátumu
+    # Tržba za rok vybraného dátumu – súčet všetkých Cista_Trzba v roku
     s_rok = df_valid[
         df_valid["Datum_date"].dt.year == selected_date.year
     ]["Cista_Trzba"].sum()
@@ -97,7 +97,7 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
-    # Graf – len dni s nenulovou tržbou
+    # Graf tržieb (len dni s tržbou)
     df_trzby = df_valid[df_valid["Cista_Trzba"] > 0]
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
