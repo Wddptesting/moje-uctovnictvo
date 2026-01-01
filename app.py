@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date, timedelta
-import time  # pridávame pre unikátny timestamp
+import time
 
 # --- KONFIGURÁCIA ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
@@ -13,29 +13,21 @@ st.title("💸 Moja Účtovná Apka")
 # --- VÝBER DÁTUMU ---
 selected_date = st.date_input("Vyber dátum pre zobrazenie tržieb", date.today())
 
-# --- TLAČIDLO NA AKTUALIZÁCIU DÁT ---
+# --- TLAČIDLO NA AKTUALIZÁCIU ---
 if st.button("🔄 Aktualizovať dáta z tabuľky"):
-    # Vynútime refresh dát
     st.rerun()
 
 # --- NAČÍTANIE DÁT ---
 def nacitaj_data():
     try:
-        # Unikátny parameter pomocou aktuálneho času (v milisekundách)
         unique_param = int(time.time() * 1000)
-        
-        response = requests.get(
-            SCRIPT_URL,
-            params={"nocache": unique_param},
-            timeout=15
-        )
+        response = requests.get(SCRIPT_URL, params={"nocache": unique_param}, timeout=15)
 
         if response.status_code != 200:
             st.error(f"Chyba pri načítaní: HTTP {response.status_code}")
             return pd.DataFrame()
 
         raw_data = response.json()
-
         if not isinstance(raw_data, list) or len(raw_data) < 2:
             st.error("Neplatné dáta z tabuľky")
             return pd.DataFrame()
@@ -55,7 +47,7 @@ def nacitaj_data():
             mask = df["Datum_date"].isna()
             if mask.any():
                 df.loc[mask, "Datum_date"] = pd.to_datetime(
-                    df.loc[mask, "Datum"],
+                    df.loc[mask, "Datum"].str.strip(),
                     format="%d.%m.%Y",
                     errors="coerce"
                 )
@@ -75,28 +67,28 @@ def nacitaj_data():
         st.error(f"Chyba pri načítaní: {e}")
         return pd.DataFrame()
 
-# Načítame dáta (pri každom kliknutí na tlačidlo sa načítajú znova)
 df_data = nacitaj_data()
 
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
 
-    df_trzby = df_data[df_data["Cista_Trzba"] > 0].copy()
+    # Odstránime riadky s neplatným dátumom
+    df_valid = df_data.dropna(subset=["Datum_date"]).copy()
 
-    # Tržba za vybraný deň
-    s_day = df_data[
-        (df_data["Datum_date"].dt.date == selected_date) & (df_data["Cista_Trzba"] > 0)
+    # Tržba za vybraný deň (len uzávierky)
+    s_day = df_valid[
+        df_valid["Datum_date"].dt.date == selected_date
     ]["Cista_Trzba"].sum()
 
-    # Tržba za posledných 30 dní od vybraného dátumu
+    # Tržba za posledných 30 dní
     pred_30 = selected_date - timedelta(days=30)
-    s_30_dni = df_data[
-        (df_data["Datum_date"].dt.date >= pred_30) & (df_data["Cista_Trzba"] > 0)
+    s_30_dni = df_valid[
+        df_valid["Datum_date"].dt.date >= pred_30
     ]["Cista_Trzba"].sum()
 
     # Tržba za rok vybraného dátumu
-    s_rok = df_data[
-        (df_data["Datum_date"].dt.year == selected_date.year) & (df_data["Cista_Trzba"] > 0)
+    s_rok = df_valid[
+        df_valid["Datum_date"].dt.year == selected_date.year
     ]["Cista_Trzba"].sum()
 
     # Metriky
@@ -105,7 +97,8 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
-    # Graf
+    # Graf (len uzávierky)
+    df_trzby = df_valid[df_valid["Cista_Trzba"] > 0]
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
         df_graf = df_trzby.groupby(df_trzby["Datum_date"].dt.date)["Cista_Trzba"].sum().reset_index()
