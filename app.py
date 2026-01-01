@@ -10,7 +10,7 @@ st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
 
 # --- NAČÍTANIE DÁT ---
-@st.cache_data(ttl=60)  # obnovuje každých 60 sekúnd
+@st.cache_data(ttl=60)
 def nacitaj_data():
     try:
         response = requests.get(
@@ -30,7 +30,7 @@ def nacitaj_data():
 
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
 
-        # --- NORMALIZÁCIA NÁZVOV STĹPCOV ---
+        # Normalizácia názvov stĺpcov
         df.columns = (
             df.columns
             .str.normalize("NFKD")
@@ -40,11 +40,20 @@ def nacitaj_data():
             .str.replace(" ", "_")
         )
 
-        # --- KONVERZIA DÁTUMU NA SKUTOČNÝ DÁTUM (najdôležitejšie!) ---
+        # --- KONVERZIA DÁTUMU – spoľahlivá ---
         if "Datum" in df.columns:
-            df["Datum_date"] = pd.to_datetime(df["Datum"], dayfirst=True, errors="coerce")
+            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce", utc=True)
+            mask = df["Datum_date"].isna()
+            if mask.any():
+                df.loc[mask, "Datum_date"] = pd.to_datetime(
+                    df.loc[mask, "Datum"],
+                    format="%d.%m.%Y",
+                    errors="coerce"
+                )
+            if df["Datum_date"].dt.tz is not None:
+                df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
 
-        # --- KONVERZIA ČÍSEL ---
+        # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
         for col in num_cols:
             if col in df.columns:
@@ -83,9 +92,9 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
         df_data["Datum_date"].dt.date >= pred_30_dni
     ]["Cista_Trzba"].sum()
 
-    # ROČNÁ TRŽBA
+    # ROČNÁ TRŽBA – používame parsed dátum na filtrovanie roka (aby sa 2025 nezapočítaval do 2026)
     s_rok = df_data[
-        df_data["Rok"] == dnes_dt.year
+        df_data["Datum_date"].dt.year == dnes_dt.year
     ]["Cista_Trzba"].sum()
 
     # Zobrazenie metrík
@@ -139,7 +148,7 @@ if poslat:
     }
 
     riadok = [
-        v_datum.strftime("%d.%m.%Y"),        # formát ako v Sheets: 31.12.2025
+        v_datum.strftime("%d.%m.%Y"),        # formát ako v Sheets: 01.01.2026
         dni_sk[v_datum.weekday()],
         f"{v_datum.isocalendar()[1]}. týždeň",
         v_datum.year,
