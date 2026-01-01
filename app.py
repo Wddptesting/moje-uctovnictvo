@@ -81,7 +81,7 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     # Filtrovanie len riadkov s vyplnenou čistou tržbou (uzávierky)
     df_trzby = df_data[df_data["Cista_Trzba"] > 0].copy()
 
-    # ✅ DNEŠNÁ TRŽBA – spoľahlivo cez skutočný dátum
+    # ✅ DNEŠNÁ TRŽBA – podľa skutočného dátumu (nie podľa stĺpca Rok!)
     s_den = df_data[
         df_data["Datum_date"].dt.date == dnes_dt
     ]["Cista_Trzba"].sum()
@@ -92,7 +92,7 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
         df_data["Datum_date"].dt.date >= pred_30_dni
     ]["Cista_Trzba"].sum()
 
-    # ROČNÁ TRŽBA – používame parsed dátum na filtrovanie roka (aby sa 2025 nezapočítaval do 2026)
+    # ROČNÁ TRŽBA – podľa parsed dátumu (presne podľa roku z Datum_date)
     s_rok = df_data[
         df_data["Datum_date"].dt.year == dnes_dt.year
     ]["Cista_Trzba"].sum()
@@ -106,13 +106,12 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     # Graf tržieb podľa dňa
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
-        # Zoskupenie podľa dňa pre pekný graf
         df_graf = (
             df_trzby.groupby(df_trzby["Datum_date"].dt.date)["Cista_Trzba"]
             .sum()
             .reset_index()
         )
-        df_graf["Datum_date"] = df_graf["Datum_date"].astype(str)  # pre pekné osi
+        df_graf["Datum_date"] = df_graf["Datum_date"].astype(str)
         st.bar_chart(df_graf.set_index("Datum_date")["Cista_Trzba"])
     else:
         st.info("💡 Tip: Aby sa zobrazil graf, urobte záznam v kategórii 'Večerný stav (Uzávierka)'.")
@@ -148,7 +147,7 @@ if poslat:
     }
 
     riadok = [
-        v_datum.strftime("%d.%m.%Y"),        # formát ako v Sheets: 01.01.2026
+        v_datum.strftime("%d.%m.%Y"),
         dni_sk[v_datum.weekday()],
         f"{v_datum.isocalendar()[1]}. týždeň",
         v_datum.year,
@@ -156,9 +155,9 @@ if poslat:
         suma if "Ranný" in kat else 0,
         suma if "Výber" in kat else 0,
         suma if "Večerný" in kat else 0,
-        "",  # Čistá tržba – počíta sa v Sheets
+        "",
         kat,
-        ""   # Poznámka
+        ""
     ]
 
     try:
