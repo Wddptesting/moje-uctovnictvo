@@ -72,10 +72,10 @@ df_data = nacitaj_data()
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
 
-    # Odstránime riadky s neplatným dátumom
+    # Odstránime len riadky s úplne neplatným dátumom
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
 
-    # Tržba za vybraný deň (len uzávierky)
+    # Tržba za vybraný deň – suma Cista_Trzba pre tento dátum (aj keď je len na jednom riadku)
     s_day = df_valid[
         df_valid["Datum_date"].dt.date == selected_date
     ]["Cista_Trzba"].sum()
@@ -97,7 +97,7 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
-    # Graf (len uzávierky)
+    # Graf – len dni s nenulovou tržbou
     df_trzby = df_valid[df_valid["Cista_Trzba"] > 0]
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
