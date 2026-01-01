@@ -10,7 +10,7 @@ st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
 
 # --- NAČÍTANIE DÁT ---
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30, show_spinner="Načítavam dáta z tabuľky...")
 def nacitaj_data():
     try:
         response = requests.get(
@@ -78,23 +78,23 @@ dnes_dt = date.today()
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
 
-    # Filtrovanie len riadkov s vyplnenou čistou tržbou (uzávierky)
+    # Všetky riadky s nenulovou čistou tržbou (uzávierky) – pre graf
     df_trzby = df_data[df_data["Cista_Trzba"] > 0].copy()
 
-    # ✅ DNEŠNÁ TRŽBA – podľa skutočného dátumu (nie podľa stĺpca Rok!)
+    # ✅ DNEŠNÁ TRŽBA
     s_den = df_data[
-        df_data["Datum_date"].dt.date == dnes_dt
+        (df_data["Datum_date"].dt.date == dnes_dt) & (df_data["Cista_Trzba"] > 0)
     ]["Cista_Trzba"].sum()
 
     # TRŽBA ZA POSLEDNÝCH 30 DNÍ
     pred_30_dni = dnes_dt - timedelta(days=30)
     s_30_dni = df_data[
-        df_data["Datum_date"].dt.date >= pred_30_dni
+        (df_data["Datum_date"].dt.date >= pred_30_dni) & (df_data["Cista_Trzba"] > 0)
     ]["Cista_Trzba"].sum()
 
-    # ROČNÁ TRŽBA – podľa parsed dátumu (presne podľa roku z Datum_date)
+    # ROČNÁ TRŽBA – správne: súčet všetkých uzávierok v aktuálnom roku
     s_rok = df_data[
-        df_data["Datum_date"].dt.year == dnes_dt.year
+        (df_data["Datum_date"].dt.year == dnes_dt.year) & (df_data["Cista_Trzba"] > 0)
     ]["Cista_Trzba"].sum()
 
     # Zobrazenie metrík
@@ -103,14 +103,10 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
     c3.metric("Tržba za rok", f"{s_rok:,.2f} €")
 
-    # Graf tržieb podľa dňa
+    # Graf tržieb
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
-        df_graf = (
-            df_trzby.groupby(df_trzby["Datum_date"].dt.date)["Cista_Trzba"]
-            .sum()
-            .reset_index()
-        )
+        df_graf = df_trzby.groupby(df_trzby["Datum_date"].dt.date)["Cista_Trzba"].sum().reset_index()
         df_graf["Datum_date"] = df_graf["Datum_date"].astype(str)
         st.bar_chart(df_graf.set_index("Datum_date")["Cista_Trzba"])
     else:
@@ -126,11 +122,7 @@ with st.form("ucto_form", clear_on_submit=True):
     v_datum = st.date_input("Dátum", dnes_dt)
     kat = st.radio(
         "Kategória",
-        [
-            "Ranný stav pokladne",
-            "Platba dodávateľovi (Výber)",
-            "Večerný stav (Uzávierka)"
-        ],
+        ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
         horizontal=True
     )
     firma = st.selectbox(
@@ -141,10 +133,7 @@ with st.form("ucto_form", clear_on_submit=True):
     poslat = st.form_submit_button("💾 ULOŽIŤ")
 
 if poslat:
-    dni_sk = {
-        0: "Pondelok", 1: "Utorok", 2: "Streda",
-        3: "Štvrtok", 4: "Piatok", 5: "Sobota", 6: "Nedeľa"
-    }
+    dni_sk = {0: "Pondelok", 1: "Utorok", 2: "Streda", 3: "Štvrtok", 4: "Piatok", 5: "Sobota", 6: "Nedeľa"}
 
     riadok = [
         v_datum.strftime("%d.%m.%Y"),
