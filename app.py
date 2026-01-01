@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date, timedelta
+import time  # pridávame pre unikátny timestamp
 
 # --- KONFIGURÁCIA ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
@@ -14,16 +15,18 @@ selected_date = st.date_input("Vyber dátum pre zobrazenie tržieb", date.today(
 
 # --- TLAČIDLO NA AKTUALIZÁCIU DÁT ---
 if st.button("🔄 Aktualizovať dáta z tabuľky"):
-    st.session_state['force_refresh'] = True
+    # Vynútime refresh dát
     st.rerun()
 
-# --- NAČÍTANIE DÁT (bez cache – vždy čerstvé pri kliknutí) ---
+# --- NAČÍTANIE DÁT ---
 def nacitaj_data():
     try:
-        # Pridáme unikátny parameter na zabránenie browser cache
+        # Unikátny parameter pomocou aktuálneho času (v milisekundách)
+        unique_param = int(time.time() * 1000)
+        
         response = requests.get(
             SCRIPT_URL,
-            params={"nocache": int(date.today().timestamp())},
+            params={"nocache": unique_param},
             timeout=15
         )
 
@@ -40,16 +43,22 @@ def nacitaj_data():
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
 
         # Normalizácia stĺpcov
-        df.columns = df.columns.str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8").str.strip().str.replace(" ", "_")
+        df.columns = df.columns.str.normalize("NFKD") \
+                               .str.encode("ascii", errors="ignore") \
+                               .str.decode("utf-8") \
+                               .str.strip() \
+                               .str.replace(" ", "_")
 
         # Konverzia dátumu
         if "Datum" in df.columns:
-            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce", utc=True)
+            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
             mask = df["Datum_date"].isna()
             if mask.any():
-                df.loc[mask, "Datum_date"] = pd.to_datetime(df.loc[mask, "Datum"], format="%d.%m.%Y", errors="coerce")
-            if df["Datum_date"].dt.tz is not None:
-                df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
+                df.loc[mask, "Datum_date"] = pd.to_datetime(
+                    df.loc[mask, "Datum"],
+                    format="%d.%m.%Y",
+                    errors="coerce"
+                )
 
         # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
@@ -63,10 +72,10 @@ def nacitaj_data():
         return df
 
     except Exception as e:
-        st.error(f"Chyba: {e}")
+        st.error(f"Chyba pri načítaní: {e}")
         return pd.DataFrame()
 
-# Načítanie dát (vždy čerstvé po kliknutí na tlačidlo)
+# Načítame dáta (pri každom kliknutí na tlačidlo sa načítajú znova)
 df_data = nacitaj_data()
 
 # --- ZOBRAZENIE ---
@@ -106,14 +115,16 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
         st.info("Žiadne tržby na zobrazenie.")
 
 else:
-    st.warning("Dáta sa nenačítali. Skús kliknúť na 'Aktualizovať dáta'.")
+    st.warning("Dáta sa nenačítali. Klikni na 'Aktualizovať dáta z tabuľky'.")
 
 st.divider()
 
 # --- FORMULÁR NA ZÁPIS ---
 with st.form("ucto_form", clear_on_submit=True):
     v_datum = st.date_input("Dátum pre zápis", selected_date)
-    kat = st.radio("Kategória", ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"], horizontal=True)
+    kat = st.radio("Kategória", 
+                   ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
+                   horizontal=True)
     firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Milka", "Bagety", "Iné"])
     suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
     poslat = st.form_submit_button("💾 ULOŽIŤ")
@@ -141,6 +152,6 @@ if poslat:
             st.success("✅ Zapísané!")
             st.rerun()
         else:
-            st.error(f"Chyba: {response.status_code}")
+            st.error(f"Chyba servera: {response.status_code}")
     except Exception as e:
         st.error(f"Chyba odoslania: {e}")
