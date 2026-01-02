@@ -11,10 +11,7 @@ st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
 
 # --- VÝBER DÁTUMU ---
-selected_date = st.date_input(
-    "Vyber dátum pre zobrazenie tržieb",
-    date.today()
-)
+selected_date = st.date_input("Vyber dátum pre zobrazenie tržieb", date.today())
 
 # --- TLAČIDLO NA AKTUALIZÁCIU ---
 if st.button("🔄 Aktualizovať dáta z tabuľky"):
@@ -24,11 +21,7 @@ if st.button("🔄 Aktualizovať dáta z tabuľky"):
 def nacitaj_data():
     try:
         unique_param = int(time.time() * 1000)
-        response = requests.get(
-            SCRIPT_URL,
-            params={"nocache": unique_param},
-            timeout=15
-        )
+        response = requests.get(SCRIPT_URL, params={"nocache": unique_param}, timeout=15)
 
         if response.status_code != 200:
             st.error(f"Chyba pri načítaní: HTTP {response.status_code}")
@@ -41,33 +34,30 @@ def nacitaj_data():
 
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
 
-        # --- NORMALIZÁCIA STĹPCOV ---
-        df.columns = (
-            df.columns
-            .str.normalize("NFKD")
-            .str.encode("ascii", errors="ignore")
-            .str.decode("utf-8")
-            .str.strip()
-            .str.replace(" ", "_")
-        )
+        # Normalizácia stĺpcov
+        df.columns = df.columns.str.normalize("NFKD") \
+                               .str.encode("ascii", errors="ignore") \
+                               .str.decode("utf-8") \
+                               .str.strip() \
+                               .str.replace(" ", "_")
 
-        # --- KONVERZIA DÁTUMU ---
+        # Konverzia dátumu
         if "Datum" in df.columns:
-            df["Datum_date"] = pd.to_datetime(
-                df["Datum"],
-                errors="coerce",
-                dayfirst=True
-            )
+            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
+            mask = df["Datum_date"].isna()
+            if mask.any():
+                df.loc[mask, "Datum_date"] = pd.to_datetime(
+                    df.loc[mask, "Datum"].str.strip(),
+                    format="%d.%m.%Y",
+                    errors="coerce"
+                )
 
-        # --- KONVERZIA ČÍSEL ---
+        # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
         for col in num_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(
-                    df[col]
-                    .astype(str)
-                    .str.replace(",", ".")
-                    .str.replace(" ", ""),
+                    df[col].astype(str).str.replace(",", ".").str.replace(" ", ""),
                     errors="coerce"
                 ).fillna(0)
 
@@ -80,57 +70,37 @@ def nacitaj_data():
 df_data = nacitaj_data()
 
 # --- ZOBRAZENIE ---
-if not df_data.empty and {"Cista_Trzba", "Datum_date"}.issubset(df_data.columns):
+if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
 
-    # odstránime len neplatné dátumy
+    # Odstránime riadky s neplatným dátumom
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
 
-    # 🔑 KRITICKÁ NORMALIZÁCIA – JEDINÝ ZDROJ PRAVDY PRE DÁTUM
-    df_valid["Datum_day"] = df_valid["Datum_date"].dt.date
+    # Normalizujeme dátum na 'deň' pre spoľahlivé porovnanie
+    df_valid["day"] = df_valid["Datum_date"].dt.date
 
-    # --- TRŽBA ZA VYBRANÝ DEŇ ---
-    s_day = df_valid.loc[
-        df_valid["Datum_day"] == selected_date,
-        "Cista_Trzba"
-    ].sum()
+    # Tržba za vybraný deň
+    s_day = df_valid[df_valid["day"] == selected_date]["Cista_Trzba"].sum()
 
-    # --- TRŽBA ZA POSLEDNÝCH 30 DNÍ (vrátane dneška) ---
-    pred_30 = selected_date - timedelta(days=29)
-    s_30_dni = df_valid.loc[
-        (df_valid["Datum_day"] >= pred_30) &
-        (df_valid["Datum_day"] <= selected_date),
-        "Cista_Trzba"
-    ].sum()
+    # Tržba za posledných 30 dní
+    pred_30 = selected_date - timedelta(days=29)  # vrátane dneška
+    s_30_dni = df_valid[df_valid["day"] >= pred_30]["Cista_Trzba"].sum()
 
-    # --- TRŽBA ZA ROK ---
-    s_rok = df_valid.loc[
-        df_valid["Datum_day"].apply(lambda d: d.year) == selected_date.year,
-        "Cista_Trzba"
-    ].sum()
+    # Tržba za rok
+    s_rok = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]["Cista_Trzba"].sum()
 
-    # --- METRIKY ---
+    # Metriky
     c1, c2, c3 = st.columns(3)
     c1.metric("Tržba za vybraný deň", f"{s_day:,.2f} €")
     c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
-    # --- GRAF ---
+    # Graf
     df_trzby = df_valid[df_valid["Cista_Trzba"] > 0]
-
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
-
-        df_graf = (
-            df_trzby
-            .groupby("Datum_day", as_index=False)["Cista_Trzba"]
-            .sum()
-            .sort_values("Datum_day")
-        )
-
-        df_graf["Datum_day"] = df_graf["Datum_day"].astype(str)
-        st.bar_chart(
-            df_graf.set_index("Datum_day")["Cista_Trzba"]
-        )
+        df_graf = df_trzby.groupby("day")["Cista_Trzba"].sum().reset_index()
+        df_graf["day"] = df_graf["day"].astype(str)
+        st.bar_chart(df_graf.set_index("day")["Cista_Trzba"])
     else:
         st.info("Žiadne tržby na zobrazenie.")
 
@@ -142,37 +112,15 @@ st.divider()
 # --- FORMULÁR NA ZÁPIS ---
 with st.form("ucto_form", clear_on_submit=True):
     v_datum = st.date_input("Dátum pre zápis", selected_date)
-    kat = st.radio(
-        "Kategória",
-        [
-            "Ranný stav pokladne",
-            "Platba dodávateľovi (Výber)",
-            "Večerný stav (Uzávierka)"
-        ],
-        horizontal=True
-    )
-    firma = st.selectbox(
-        "Položka",
-        ["POKLADŇA", "Labaš", "Terminál", "Milka", "Bagety", "Iné"]
-    )
-    suma = st.number_input(
-        "Suma v €",
-        min_value=0.0,
-        step=0.01,
-        format="%.2f"
-    )
+    kat = st.radio("Kategória", 
+                   ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
+                   horizontal=True)
+    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Milka", "Bagety", "Iné"])
+    suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
     poslat = st.form_submit_button("💾 ULOŽIŤ")
 
 if poslat:
-    dni_sk = {
-        0: "Pondelok",
-        1: "Utorok",
-        2: "Streda",
-        3: "Štvrtok",
-        4: "Piatok",
-        5: "Sobota",
-        6: "Nedeľa"
-    }
+    dni_sk = {0: "Pondelok", 1: "Utorok", 2: "Streda", 3: "Štvrtok", 4: "Piatok", 5: "Sobota", 6: "Nedeľa"}
 
     riadok = [
         v_datum.strftime("%d.%m.%Y"),
@@ -189,10 +137,7 @@ if poslat:
     ]
 
     try:
-        response = requests.post(
-            SCRIPT_URL,
-            json={"row": riadok}
-        )
+        response = requests.post(SCRIPT_URL, json={"row": riadok})
         if response.status_code == 200:
             st.success("✅ Zapísané!")
             st.rerun()
