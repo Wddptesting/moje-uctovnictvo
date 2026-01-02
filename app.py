@@ -70,7 +70,7 @@ def nacitaj_data():
 df_data = nacitaj_data()
 
 # --- ZOBRAZENIE ---
-if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df_data.columns:
+if not df_data.empty and "Datum_date" in df_data.columns:
 
     # Odstránime riadky s neplatným dátumom
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
@@ -78,15 +78,22 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     # Normalizujeme dátum na 'deň' pre spoľahlivé porovnanie
     df_valid["day"] = df_valid["Datum_date"].dt.date
 
+    # OPRAVA: Vypočítame čistú tržbu priamo v Pythone
+    if all(col in df_valid.columns for col in ["Vecer", "Rano", "Vybery"]):
+        df_valid["Cista_Trzba_calc"] = df_valid["Vecer"] - df_valid["Rano"] - df_valid["Vybery"]
+    else:
+        # Fallback na pôvodnú hodnotu ak chýbajú stĺpce
+        df_valid["Cista_Trzba_calc"] = df_valid.get("Cista_Trzba", 0)
+
     # Tržba za vybraný deň
-    s_day = df_valid[df_valid["day"] == selected_date]["Cista_Trzba"].sum()
+    s_day = df_valid[df_valid["day"] == selected_date]["Cista_Trzba_calc"].sum()
 
     # Tržba za posledných 30 dní
     pred_30 = selected_date - timedelta(days=29)  # vrátane dneška
-    s_30_dni = df_valid[df_valid["day"] >= pred_30]["Cista_Trzba"].sum()
+    s_30_dni = df_valid[df_valid["day"] >= pred_30]["Cista_Trzba_calc"].sum()
 
     # Tržba za rok
-    s_rok = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]["Cista_Trzba"].sum()
+    s_rok = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]["Cista_Trzba_calc"].sum()
 
     # Metriky
     c1, c2, c3 = st.columns(3)
@@ -95,12 +102,12 @@ if not df_data.empty and "Cista_Trzba" in df_data.columns and "Datum_date" in df
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
     # Graf
-    df_trzby = df_valid[df_valid["Cista_Trzba"] > 0]
+    df_trzby = df_valid[df_valid["Cista_Trzba_calc"] > 0]
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
-        df_graf = df_trzby.groupby("day")["Cista_Trzba"].sum().reset_index()
+        df_graf = df_trzby.groupby("day")["Cista_Trzba_calc"].sum().reset_index()
         df_graf["day"] = df_graf["day"].astype(str)
-        st.bar_chart(df_graf.set_index("day")["Cista_Trzba"])
+        st.bar_chart(df_graf.set_index("day")["Cista_Trzba_calc"])
     else:
         st.info("Žiadne tržby na zobrazenie.")
 
