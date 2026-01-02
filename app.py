@@ -78,22 +78,40 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     # Normalizujeme dátum na 'deň' pre spoľahlivé porovnanie
     df_valid["day"] = df_valid["Datum_date"].dt.date
 
-    # OPRAVA: Vypočítame čistú tržbu priamo v Pythone
-    if all(col in df_valid.columns for col in ["Vecer", "Rano", "Vybery"]):
-        df_valid["Cista_Trzba_calc"] = df_valid["Vecer"] - df_valid["Rano"] - df_valid["Vybery"]
+    # OPRAVA: Dennú tržbu berieme z posledného riadku daného dňa (Večerný stav)
+    # Najprv skontrolujeme, či máme potrebné stĺpce
+    if "Cista_Trzba" in df_valid.columns:
+        # Konvertujeme Cista_Trzba na číslo ak ešte nie je
+        df_valid["Cista_Trzba"] = pd.to_numeric(
+            df_valid["Cista_Trzba"].astype(str).str.replace(",", ".").str.replace(" ", ""),
+            errors="coerce"
+        ).fillna(0)
+    
+    # Debug: Zobrazíme dáta pre vybraný deň
+    debug_df = df_valid[df_valid["day"] == selected_date][["Datum", "Firma", "Rano", "Vybery", "Vecer", "Cista_Trzba", "Kategoria"]] if "Kategoria" in df_valid.columns else df_valid[df_valid["day"] == selected_date][["Datum", "Firma", "Rano", "Vybery", "Vecer", "Cista_Trzba"]]
+    if not debug_df.empty:
+        with st.expander("🔍 Detail záznamov pre vybraný deň"):
+            st.dataframe(debug_df)
+    
+    # Tržba za vybraný deň - berieme POSLEDNÚ hodnotu Cista_Trzba pre daný deň
+    selected_day_rows = df_valid[df_valid["day"] == selected_date]
+    if not selected_day_rows.empty:
+        # Zoberieme posledný riadok pre daný deň (Večerný stav obsahuje finálnu čistú tržbu)
+        s_day = selected_day_rows.iloc[-1]["Cista_Trzba"]
     else:
-        # Fallback na pôvodnú hodnotu ak chýbajú stĺpce
-        df_valid["Cista_Trzba_calc"] = df_valid.get("Cista_Trzba", 0)
+        s_day = 0
 
-    # Tržba za vybraný deň
-    s_day = df_valid[df_valid["day"] == selected_date]["Cista_Trzba_calc"].sum()
+    # Tržba za posledných 30 dní - berieme poslednú hodnotu Cista_Trzba pre každý deň
+    pred_30 = selected_date - timedelta(days=29)
+    df_last_30 = df_valid[df_valid["day"] >= pred_30]
+    # Zoberieme posledný riadok pre každý deň
+    df_last_30_grouped = df_last_30.groupby("day").last().reset_index()
+    s_30_dni = df_last_30_grouped["Cista_Trzba"].sum()
 
-    # Tržba za posledných 30 dní
-    pred_30 = selected_date - timedelta(days=29)  # vrátane dneška
-    s_30_dni = df_valid[df_valid["day"] >= pred_30]["Cista_Trzba_calc"].sum()
-
-    # Tržba za rok
-    s_rok = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]["Cista_Trzba_calc"].sum()
+    # Tržba za rok - berieme poslednú hodnotu Cista_Trzba pre každý deň
+    df_year = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
+    df_year_grouped = df_year.groupby("day").last().reset_index()
+    s_rok = df_year_grouped["Cista_Trzba"].sum()
 
     # Metriky
     c1, c2, c3 = st.columns(3)
@@ -102,12 +120,15 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
     # Graf
-    df_trzby = df_valid[df_valid["Cista_Trzba_calc"] > 0]
+    df_year_for_chart = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
+    df_trzby = df_year_for_chart.groupby("day").last().reset_index()
+    df_trzby = df_trzby[df_trzby["Cista_Trzba"] != 0]  # Odstránime dni s nulovou tržbou
+    
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
-        df_graf = df_trzby.groupby("day")["Cista_Trzba_calc"].sum().reset_index()
+        df_graf = df_trzby[["day", "Cista_Trzba"]].copy()
         df_graf["day"] = df_graf["day"].astype(str)
-        st.bar_chart(df_graf.set_index("day")["Cista_Trzba_calc"])
+        st.bar_chart(df_graf.set_index("day")["Cista_Trzba"])
     else:
         st.info("Žiadne tržby na zobrazenie.")
 
