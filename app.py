@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from datetime import date, timedelta
 import time
+import pytz
 
 # --- KONFIGURÁCIA ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
@@ -32,6 +33,7 @@ def nacitaj_data():
             st.error("Neplatné dáta z tabuľky")
             return pd.DataFrame()
 
+        # Načítame dáta do DataFrame
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
         df["row_number"] = df.index + 2  # technický stĺpec pre číslo riadku
 
@@ -42,15 +44,19 @@ def nacitaj_data():
                                .str.strip() \
                                .str.replace(" ", "_")
 
-        # Konverzia dátumu – robustná verzia
+        # --- KONVERZIA DÁTUMU S LOAKLNYM ČASOM ---
         if "Datum" in df.columns:
+            # Načítame tz-aware timestamp
             df["Datum_date"] = pd.to_datetime(
                 df["Datum"].astype(str).str.strip(),
-                dayfirst=True,  # deň je prvé číslo
+                dayfirst=True,
                 errors="coerce"
-            ).dt.tz_localize(None)
- 
-     
+            )
+            # Prevedieme UTC čas do Bratislava timezone
+            df["Datum_date"] = df["Datum_date"].dt.tz_convert("Europe/Bratislava")
+            # Odstránime tz info
+            df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
+
         # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
         for col in num_cols:
@@ -66,25 +72,27 @@ def nacitaj_data():
         st.error(f"Chyba pri načítaní: {e}")
         return pd.DataFrame()
 
+
+# --- NAČÍTANIE DÁT ---
 df_data = nacitaj_data()
 
-# --- TEST – overenie načítaných dát ---
+# --- TEST – overenie dát ---
 with st.expander("🧪 TEST – všetky načítané dátumy"):
     if not df_data.empty:
         st.dataframe(df_data[["Datum", "Datum_date", "row_number", "Cista_Trzba"]])
     else:
         st.write("❌ df_data je prázdny")
 
+
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Datum_date" in df_data.columns:
+
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
     df_valid["day"] = df_valid["Datum_date"].dt.date
 
-    # Debug: dáta pre vybraný deň
-    debug_df = df_valid[df_valid["day"] == selected_date]
-    if not debug_df.empty:
-        with st.expander("🔍 Detail záznamov pre vybraný deň"):
-            st.dataframe(debug_df)
+    # --- TEST po timezone konverzii ---
+    with st.expander("🧪 TEST – po timezone konverzii"):
+        st.dataframe(df_valid[["Datum", "Datum_date", "day", "Cista_Trzba"]])
 
     # Tržba za vybraný deň
     selected_day_rows = df_valid[df_valid["day"] == selected_date]
@@ -131,7 +139,8 @@ with st.form("ucto_form", clear_on_submit=True):
     kat = st.radio("Kategória", 
                    ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
                    horizontal=True)
-    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Dušan", "Martinka", "Stravné lístky", "Milka", "Bagety", "Iné"])
+    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Dušan", "Martinka", 
+                                     "Stravné lístky", "Milka", "Bagety", "Iné"])
     suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
     poslat = st.form_submit_button("💾 ULOŽIŤ")
 
