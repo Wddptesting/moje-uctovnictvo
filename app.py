@@ -7,7 +7,7 @@ import pytz
 import calendar
 
 # --- KONFIGURÁCIA ---
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
+SCRIPT_URL = "TU_DAJ_SVOJ_SCRIPT_URL"
 
 st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
@@ -35,7 +35,7 @@ def nacitaj_data():
             return pd.DataFrame()
 
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
-        df["row_number"] = df.index + 2
+        df["row_number"] = df.index + 2  # technický stĺpec
 
         # Normalizácia stĺpcov
         df.columns = df.columns.str.normalize("NFKD") \
@@ -44,17 +44,15 @@ def nacitaj_data():
                                .str.strip() \
                                .str.replace(" ", "_")
 
-        # Konverzia dátumu – timezone Bratislava
+        # --- KONVERZIA DÁTUMU UTC → Bratislava tz-naive ---
         if "Datum" in df.columns:
-            df["Datum_date"] = pd.to_datetime(
-                df["Datum"].astype(str).str.strip(),
-                dayfirst=True,
-                errors="coerce"
-            )
-            df["Datum_date"] = df["Datum_date"].dt.tz_convert("Europe/Bratislava")
+            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
+            # len ak tz-aware
+            if df["Datum_date"].dt.tz is not None:
+                df["Datum_date"] = df["Datum_date"].dt.tz_convert("Europe/Bratislava")
             df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
 
-        # Konverzia čísel
+        # --- Konverzia čísel ---
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
         for col in num_cols:
             if col in df.columns:
@@ -73,28 +71,27 @@ def nacitaj_data():
 # --- NAČÍTANIE DÁT ---
 df_data = nacitaj_data()
 
-# --- TEST – overenie dát ---
-with st.expander("🧪 TEST – všetky načítané dátumy"):
+# --- DEBUG EXPANDER ---
+with st.expander("DEBUG – všetky načítané dáta"):
     if not df_data.empty:
         st.dataframe(df_data[["Datum", "Datum_date", "row_number", "Cista_Trzba"]])
     else:
         st.write("❌ df_data je prázdny")
 
 
-# --- ZOBRAZENIE ---
+# --- ZOBRAZENIE A VÝPOČTY ---
 if not df_data.empty and "Datum_date" in df_data.columns:
-
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
     df_valid["day"] = df_valid["Datum_date"].dt.date
 
-    with st.expander("🧪 TEST – po timezone konverzii"):
+    with st.expander("DEBUG – po timezone konverzii"):
         st.dataframe(df_valid[["Datum", "Datum_date", "day", "Cista_Trzba"]])
 
-    # Tržba za vybraný deň
+    # --- Tržba za vybraný deň ---
     selected_day_rows = df_valid[df_valid["day"] == selected_date]
     s_day = selected_day_rows.iloc[-1]["Cista_Trzba"] if not selected_day_rows.empty else 0
 
-    # Tržba za aktuálny týždeň
+    # --- Tržba za aktuálny týždeň ---
     current_week = selected_date.isocalendar()[1]
     current_year = selected_date.isocalendar()[0]
 
@@ -105,11 +102,10 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     df_tyzden_grouped = df_tyzden.groupby("day").last().reset_index()
     s_tyzden = df_tyzden_grouped["Cista_Trzba"].sum()
 
-    # Tržba za aktuálny mesiac
+    # --- Tržba za aktuálny mesiac ---
     rok = selected_date.year
     mesiac = selected_date.month
     posledny_den = calendar.monthrange(rok, mesiac)[1]
-
     prvy_den_mesiaca = date(rok, mesiac, 1)
     posledny_den_mesiaca = date(rok, mesiac, posledny_den)
 
@@ -117,21 +113,20 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     df_mesacne_grouped = df_mesacne.groupby("day").last().reset_index()
     s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
 
-    # Tržba za rok
+    # --- Tržba za rok ---
     df_year = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
     df_year_grouped = df_year.groupby("day").last().reset_index()
     s_rok = df_year_grouped["Cista_Trzba"].sum()
 
-    # Metriky: Denná – Týždenná – Mesačná – Ročná
+    # --- METRIKY ---
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Tržba za vybraný deň", f"{s_day:,.2f} €")
+    c1.metric("Tržba za deň", f"{s_day:,.2f} €")
     c2.metric(f"Tržba za týždeň {current_week}", f"{s_tyzden:,.2f} €")
     c3.metric(f"Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
     c4.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
-    # Graf tržieb
-    df_year_for_chart = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
-    df_trzby = df_year_for_chart.groupby("day").last().reset_index()
+    # --- Graf tržieb ---
+    df_trzby = df_year.groupby("day").last().reset_index()
     df_trzby = df_trzby[df_trzby["Cista_Trzba"] != 0]
 
     if not df_trzby.empty:
@@ -178,7 +173,7 @@ if poslat:
     try:
         response = requests.post(SCRIPT_URL, json={"row": riadok})
         if response.status_code == 200:
-            st.success("✅ Riadok uložený do Hárok1 aj do Backup")
+            st.success(f"✅ Riadok uložený do Hárok1 aj do Backup ({v_datum})")
             st.rerun()
         else:
             st.error(f"Chyba servera: {response.status_code}")
