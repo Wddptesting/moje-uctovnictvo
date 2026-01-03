@@ -43,12 +43,12 @@ def nacitaj_data():
                                .str.replace(" ", "_")
 
         # Konverzia dátumu – robustná verzia
- if "Datum" in df.columns:
-    df["Datum_date"] = pd.to_datetime(
-        df["Datum"].astype(str).str.strip(),
-        dayfirst=True,
-        errors="coerce"
-    ).dt.tz_localize(None)
+        if "Datum" in df.columns:
+            df["Datum_date"] = pd.to_datetime(
+                df["Datum"].astype(str).str.strip(),
+                dayfirst=True,  # deň je prvé číslo
+                errors="coerce"
+            ).dt.tz_localize(None)
      
         # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
