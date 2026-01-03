@@ -77,6 +77,12 @@ if not df_data.empty and "Datum_date" in df_data.columns:
 
     # Normalizujeme dátum na 'deň' pre spoľahlivé porovnanie
     df_valid["day"] = df_valid["Datum_date"].dt.date
+        # --- TEST – overenie načítaných dát ---
+    with st.expander("🧪 TEST – všetky načítané dátumy"):
+        if not df_valid.empty:
+            st.dataframe(df_valid[["Datum", "Datum_date", "day", "Cista_Trzba"]])
+        else:
+            st.write("❌ df_valid je prázdny")
 
     # OPRAVA: Dennú tržbu berieme z posledného riadku daného dňa (Večerný stav)
     # Najprv skontrolujeme, či máme potrebné stĺpce
