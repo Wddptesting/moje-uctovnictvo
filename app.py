@@ -43,13 +43,14 @@ def nacitaj_data():
                                .str.strip() \
                                .str.replace(" ", "_")
 
-        # Konverzia dátumu
-     if "Datum" in df.columns:
-    df["Datum_date"] = pd.to_datetime(
-        df["Datum"].astype(str).str.strip(),
-        format="%d.%m.%Y",
-        errors="coerce"
-    )
+        # Konverzia dátumu – OPRAVA
+        if "Datum" in df.columns:
+            df["Datum_date"] = pd.to_datetime(
+                df["Datum"].astype(str).str.strip(),
+                format="%d.%m.%Y",
+                errors="coerce"
+            )
+
 
         # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
