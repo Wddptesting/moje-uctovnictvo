@@ -5,11 +5,12 @@ from datetime import date, timedelta
 import time
 import pytz
 import calendar
+import altair as alt
 
 # --- KONFIGURÁCIA ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
 
-st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
+st.set_page_config(page_title="💸 Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
 
 # --- VÝBER DÁTUMU ---
@@ -47,7 +48,6 @@ def nacitaj_data():
         # --- KONVERZIA DÁTUMU UTC → Bratislava tz-naive ---
         if "Datum" in df.columns:
             df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
-            # len ak tz-aware
             if df["Datum_date"].dt.tz is not None:
                 df["Datum_date"] = df["Datum_date"].dt.tz_convert("Europe/Bratislava")
             df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
@@ -67,8 +67,7 @@ def nacitaj_data():
         st.error(f"Chyba pri načítaní: {e}")
         return pd.DataFrame()
 
-
-# --- NAČÍTANIE DÁT ---
+# --- Načítanie dát ---
 df_data = nacitaj_data()
 
 # --- DEBUG EXPANDER ---
@@ -78,7 +77,6 @@ with st.expander("DEBUG – všetky načítané dáta"):
     else:
         st.write("❌ df_data je prázdny")
 
-
 # --- ZOBRAZENIE A VÝPOČTY ---
 if not df_data.empty and "Datum_date" in df_data.columns:
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
@@ -87,14 +85,13 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     with st.expander("DEBUG – po timezone konverzii"):
         st.dataframe(df_valid[["Datum", "Datum_date", "day", "Cista_Trzba"]])
 
-    # --- Tržba za vybraný deň ---
+    # --- Tržba za deň ---
     selected_day_rows = df_valid[df_valid["day"] == selected_date]
     s_day = selected_day_rows.iloc[-1]["Cista_Trzba"] if not selected_day_rows.empty else 0
 
     # --- Tržba za aktuálny týždeň ---
     current_week = selected_date.isocalendar()[1]
     current_year = selected_date.isocalendar()[0]
-
     df_tyzden = df_valid[
         (df_valid["Datum_date"].dt.isocalendar().week == current_week) &
         (df_valid["Datum_date"].dt.isocalendar().year == current_year)
@@ -108,7 +105,6 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     posledny_den = calendar.monthrange(rok, mesiac)[1]
     prvy_den_mesiaca = date(rok, mesiac, 1)
     posledny_den_mesiaca = date(rok, mesiac, posledny_den)
-
     df_mesacne = df_valid[(df_valid["day"] >= prvy_den_mesiaca) & (df_valid["day"] <= posledny_den_mesiaca)]
     df_mesacne_grouped = df_mesacne.groupby("day").last().reset_index()
     s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
@@ -119,21 +115,26 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     s_rok = df_year_grouped["Cista_Trzba"].sum()
 
     # --- METRIKY ---
+    st.subheader("📊 Tržby")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Tržba za deň", f"{s_day:,.2f} €")
-    c2.metric(f"Tržba za týždeň {current_week}", f"{s_tyzden:,.2f} €")
-    c3.metric(f"Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
-    c4.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
+    c1.metric("💰 Tržba za deň", f"{s_day:,.2f} €")
+    c2.metric(f"📅 Tržba za týždeň {current_week}", f"{s_tyzden:,.2f} €")
+    c3.metric(f"🗓️ Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
+    c4.metric(f"📈 Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
     # --- Graf tržieb ---
     df_trzby = df_year.groupby("day").last().reset_index()
     df_trzby = df_trzby[df_trzby["Cista_Trzba"] != 0]
-
     if not df_trzby.empty:
-        st.subheader("Graf tržieb")
+        st.subheader("📈 Graf tržieb")
         df_graf = df_trzby[["day", "Cista_Trzba"]].copy()
         df_graf["day"] = df_graf["day"].astype(str)
-        st.bar_chart(df_graf.set_index("day")["Cista_Trzba"])
+        chart = alt.Chart(df_graf).mark_bar(color="#4CAF50").encode(
+            x='day',
+            y='Cista_Trzba',
+            tooltip=['day','Cista_Trzba']
+        ).interactive()
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("Žiadne tržby na zobrazenie.")
 
@@ -143,15 +144,16 @@ else:
 st.divider()
 
 # --- FORMULÁR NA ZÁPIS ---
-with st.form("ucto_form", clear_on_submit=True):
-    v_datum = st.date_input("Dátum pre zápis", selected_date)
-    kat = st.radio("Kategória", 
-                   ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
-                   horizontal=True)
-    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Dušan", "Martinka", 
-                                     "Stravné lístky", "Milka", "Bagety", "Iné"])
-    suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
-    poslat = st.form_submit_button("💾 ULOŽIŤ")
+with st.expander("📝 Formulár na zápis"):
+    with st.form("ucto_form", clear_on_submit=True):
+        v_datum = st.date_input("Dátum pre zápis", selected_date)
+        kat = st.radio("Kategória", 
+                       ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
+                       horizontal=True)
+        firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Dušan", "Martinka", 
+                                         "Stravné lístky", "Milka", "Bagety", "Iné"])
+        suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
+        poslat = st.form_submit_button("💾 ULOŽIŤ")
 
 if poslat:
     dni_sk = {0: "Pondelok", 1: "Utorok", 2: "Streda", 3: "Štvrtok", 4: "Piatok", 5: "Sobota", 6: "Nedeľa"}
@@ -174,6 +176,7 @@ if poslat:
         response = requests.post(SCRIPT_URL, json={"row": riadok})
         if response.status_code == 200:
             st.success(f"✅ Riadok uložený do Hárok1 aj do Backup ({v_datum})")
+            st.balloons()
             st.rerun()
         else:
             st.error(f"Chyba servera: {response.status_code}")
