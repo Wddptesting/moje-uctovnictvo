@@ -99,10 +99,18 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     s_day = selected_day_rows.iloc[-1]["Cista_Trzba"] if not selected_day_rows.empty else 0
 
     # Tržba za posledných 30 dní
-    pred_30 = selected_date - timedelta(days=29)
-    df_last_30 = df_valid[df_valid["day"] >= pred_30]
-    df_last_30_grouped = df_last_30.groupby("day").last().reset_index()
-    s_30_dni = df_last_30_grouped["Cista_Trzba"].sum()
+    # Počet dní v mesiaci
+rok = selected_date.year
+mesiac = selected_date.month
+posledny_den = calendar.monthrange(rok, mesiac)[1]
+
+# Rozsah dní od 1. do posledného dňa mesiaca
+prvy_den_mesiaca = date(rok, mesiac, 1)
+posledny_den_mesiaca = date(rok, mesiac, posledny_den)
+
+df_mesacne = df_valid[(df_valid["day"] >= prvy_den_mesiaca) & (df_valid["day"] <= posledny_den_mesiaca)]
+df_mesacne_grouped = df_mesacne.groupby("day").last().reset_index()
+s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
 
     # Tržba za rok
     df_year = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
