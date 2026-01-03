@@ -68,6 +68,8 @@ def nacitaj_data():
         return pd.DataFrame()
 
 df_data = nacitaj_data()
+st.write("Raw Datum values:", df["Datum"].tolist())
+
 
 # --- ZOBRAZENIE ---
 if not df_data.empty and "Datum_date" in df_data.columns:
