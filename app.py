@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import date, timedelta
 import time
 import pytz
+import calendar
 
 # --- KONFIGURÁCIA ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
@@ -33,9 +34,8 @@ def nacitaj_data():
             st.error("Neplatné dáta z tabuľky")
             return pd.DataFrame()
 
-        # Načítame dáta do DataFrame
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
-        df["row_number"] = df.index + 2  # technický stĺpec pre číslo riadku
+        df["row_number"] = df.index + 2
 
         # Normalizácia stĺpcov
         df.columns = df.columns.str.normalize("NFKD") \
@@ -44,17 +44,14 @@ def nacitaj_data():
                                .str.strip() \
                                .str.replace(" ", "_")
 
-        # --- KONVERZIA DÁTUMU S LOAKLNYM ČASOM ---
+        # Konverzia dátumu – timezone Bratislava
         if "Datum" in df.columns:
-            # Načítame tz-aware timestamp
             df["Datum_date"] = pd.to_datetime(
                 df["Datum"].astype(str).str.strip(),
                 dayfirst=True,
                 errors="coerce"
             )
-            # Prevedieme UTC čas do Bratislava timezone
             df["Datum_date"] = df["Datum_date"].dt.tz_convert("Europe/Bratislava")
-            # Odstránime tz info
             df["Datum_date"] = df["Datum_date"].dt.tz_localize(None)
 
         # Konverzia čísel
@@ -90,7 +87,6 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     df_valid = df_data.dropna(subset=["Datum_date"]).copy()
     df_valid["day"] = df_valid["Datum_date"].dt.date
 
-    # --- TEST po timezone konverzii ---
     with st.expander("🧪 TEST – po timezone konverzii"):
         st.dataframe(df_valid[["Datum", "Datum_date", "day", "Cista_Trzba"]])
 
@@ -98,19 +94,17 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     selected_day_rows = df_valid[df_valid["day"] == selected_date]
     s_day = selected_day_rows.iloc[-1]["Cista_Trzba"] if not selected_day_rows.empty else 0
 
-    # Tržba za posledných 30 dní
-    # Počet dní v mesiaci
-rok = selected_date.year
-mesiac = selected_date.month
-posledny_den = calendar.monthrange(rok, mesiac)[1]
+    # Tržba za aktuálny kalendárny mesiac
+    rok = selected_date.year
+    mesiac = selected_date.month
+    posledny_den = calendar.monthrange(rok, mesiac)[1]
 
-# Rozsah dní od 1. do posledného dňa mesiaca
-prvy_den_mesiaca = date(rok, mesiac, 1)
-posledny_den_mesiaca = date(rok, mesiac, posledny_den)
+    prvy_den_mesiaca = date(rok, mesiac, 1)
+    posledny_den_mesiaca = date(rok, mesiac, posledny_den)
 
-df_mesacne = df_valid[(df_valid["day"] >= prvy_den_mesiaca) & (df_valid["day"] <= posledny_den_mesiaca)]
-df_mesacne_grouped = df_mesacne.groupby("day").last().reset_index()
-s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
+    df_mesacne = df_valid[(df_valid["day"] >= prvy_den_mesiaca) & (df_valid["day"] <= posledny_den_mesiaca)]
+    df_mesacne_grouped = df_mesacne.groupby("day").last().reset_index()
+    s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
 
     # Tržba za rok
     df_year = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
@@ -120,14 +114,14 @@ s_mesiac = df_mesacne_grouped["Cista_Trzba"].sum()
     # Metriky
     c1, c2, c3 = st.columns(3)
     c1.metric("Tržba za vybraný deň", f"{s_day:,.2f} €")
-    c2.metric("Tržba (posledných 30 dní)", f"{s_30_dni:,.2f} €")
+    c2.metric(f"Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
     c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
     # Graf tržieb
     df_year_for_chart = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
     df_trzby = df_year_for_chart.groupby("day").last().reset_index()
     df_trzby = df_trzby[df_trzby["Cista_Trzba"] != 0]
-    
+
     if not df_trzby.empty:
         st.subheader("Graf tržieb")
         df_graf = df_trzby[["day", "Cista_Trzba"]].copy()
