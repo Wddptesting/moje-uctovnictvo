@@ -33,6 +33,8 @@ def nacitaj_data():
             return pd.DataFrame()
 
         df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+        
+        df["row_number"] = df.index + 2
 
         # Normalizácia stĺpcov
         df.columns = df.columns.str.normalize("NFKD") \
