@@ -45,14 +45,15 @@ def nacitaj_data():
 
         # Konverzia dátumu
         if "Datum" in df.columns:
-            df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
-            mask = df["Datum_date"].isna()
-            if mask.any():
-                df.loc[mask, "Datum_date"] = pd.to_datetime(
-                    df.loc[mask, "Datum"].str.strip(),
-                    format="%d.%m.%Y",
-                    errors="coerce"
-                )
+          df["Datum_date"] = pd.to_datetime(df["Datum"], errors="coerce")
+mask = df["Datum_date"].isna()
+if mask.any():
+    df.loc[mask, "Datum_date"] = pd.to_datetime(
+        df.loc[mask, "Datum"].str.strip(),
+        format="%d.%m.%Y",
+        errors="coerce"
+    )
+
 
         # Konverzia čísel
         num_cols = ["Rano", "Vybery", "Vecer", "Cista_Trzba", "Rok"]
