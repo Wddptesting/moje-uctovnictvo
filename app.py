@@ -94,7 +94,18 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     selected_day_rows = df_valid[df_valid["day"] == selected_date]
     s_day = selected_day_rows.iloc[-1]["Cista_Trzba"] if not selected_day_rows.empty else 0
 
-    # Tržba za aktuálny kalendárny mesiac
+    # Tržba za aktuálny týždeň
+    current_week = selected_date.isocalendar()[1]
+    current_year = selected_date.isocalendar()[0]
+
+    df_tyzden = df_valid[
+        (df_valid["Datum_date"].dt.isocalendar().week == current_week) &
+        (df_valid["Datum_date"].dt.isocalendar().year == current_year)
+    ]
+    df_tyzden_grouped = df_tyzden.groupby("day").last().reset_index()
+    s_tyzden = df_tyzden_grouped["Cista_Trzba"].sum()
+
+    # Tržba za aktuálny mesiac
     rok = selected_date.year
     mesiac = selected_date.month
     posledny_den = calendar.monthrange(rok, mesiac)[1]
@@ -111,11 +122,12 @@ if not df_data.empty and "Datum_date" in df_data.columns:
     df_year_grouped = df_year.groupby("day").last().reset_index()
     s_rok = df_year_grouped["Cista_Trzba"].sum()
 
-    # Metriky
-    c1, c2, c3 = st.columns(3)
+    # Metriky: Denná – Týždenná – Mesačná – Ročná
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tržba za vybraný deň", f"{s_day:,.2f} €")
-    c2.metric(f"Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
-    c3.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
+    c2.metric(f"Tržba za týždeň {current_week}", f"{s_tyzden:,.2f} €")
+    c3.metric(f"Tržba za mesiac {selected_date.strftime('%B')}", f"{s_mesiac:,.2f} €")
+    c4.metric(f"Tržba za rok {selected_date.year}", f"{s_rok:,.2f} €")
 
     # Graf tržieb
     df_year_for_chart = df_valid[df_valid["Datum_date"].dt.year == selected_date.year]
