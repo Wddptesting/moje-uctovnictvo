@@ -143,7 +143,7 @@ with st.form("ucto_form", clear_on_submit=True):
     kat = st.radio("Kategória", 
                    ["Ranný stav pokladne", "Platba dodávateľovi (Výber)", "Večerný stav (Uzávierka)"],
                    horizontal=True)
-    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Milka", "Bagety", "Iné"])
+    firma = st.selectbox("Položka", ["POKLADŇA", "Labaš", "Terminál", "Dušan", "Martinka", "Stravné lístky", "Milka", "Bagety", "Iné"])
     suma = st.number_input("Suma v €", min_value=0.0, step=0.01, format="%.2f")
     poslat = st.form_submit_button("💾 ULOŽIŤ")
 
