@@ -178,7 +178,7 @@ if poslat:
     try:
         response = requests.post(SCRIPT_URL, json={"row": riadok})
         if response.status_code == 200:
-            st.success("✅ Zapísané!")
+            st.success("✅ Riadok uložený do Hárok1 aj do Backup"))
             st.rerun()
         else:
             st.error(f"Chyba servera: {response.status_code}")
