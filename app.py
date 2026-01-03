@@ -7,7 +7,7 @@ import pytz
 import calendar
 
 # --- KONFIGURÁCIA ---
-SCRIPT_URL = "TU_DAJ_SVOJ_SCRIPT_URL"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDP_pIMWYbSkxvZWM5RnQEhacWMAmKNBusBOGgc22XJKwGsYclk14XCVMfHrNUGQBG/exec"
 
 st.set_page_config(page_title="Moja Účtovná Apka", layout="wide")
 st.title("💸 Moja Účtovná Apka")
